@@ -1,17 +1,47 @@
-
 "use client";
 
-import { useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useState,
+  type FormEvent,
+} from "react";
+
+import Link from "next/link";
+
+import {
+  useRouter,
+} from "next/navigation";
+
 import {
   signInWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
-import type { UserRole } from "@/types";
+
+import {
+  doc,
+  getDoc,
+} from "firebase/firestore";
+
+import {
+  auth,
+  db,
+} from "@/lib/firebase";
+
+import {
+  useAuth,
+} from "@/lib/auth-context";
+
+import type {
+  UserRole,
+} from "@/types";
+
+// ======================================================
+// GREENSHARE — LOGIN PAGE
+// ======================================================
 
 // Academic demonstration accounts only.
-// Never use these credentials in a production application.
+// These credentials must not be reused in production.
+
 const demoAccounts = [
   {
     label: "Administrator",
@@ -33,303 +63,353 @@ const demoAccounts = [
   },
 ] as const;
 
-type Profile = {
+// ------------------------------------------------------
+// PROFILE VALIDATION
+// ------------------------------------------------------
+
+interface LoginProfile {
   uid: string;
   username: string;
   role: UserRole;
   active: boolean;
-};
+}
 
 function isValidProfile(
   value: unknown,
   authenticatedUid: string
-): value is Profile {
-  if (typeof value !== "object" || value === null) {
+): value is LoginProfile {
+  if (
+    typeof value !== "object" ||
+    value === null
+  ) {
     return false;
   }
 
-  const profile = value as Record<string, unknown>;
+  const profile = value as Record<
+    string,
+    unknown
+  >;
 
   return (
     profile.uid === authenticatedUid &&
     typeof profile.username === "string" &&
-    profile.username.length > 0 &&
-    (profile.role === "admin" || profile.role === "worker") &&
+    profile.username.trim().length > 0 &&
+    (
+      profile.role === "admin" ||
+      profile.role === "worker"
+    ) &&
     profile.active === true
   );
 }
 
+// ======================================================
+// LOGIN COMPONENT
+// ======================================================
+
 export default function LoginPage() {
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
+  const router = useRouter();
 
-  const [loading, setLoading] = useState(false);
-  const [signedIn, setSignedIn] = useState(false);
+  const {
+    loading: authLoading,
+    isAuthenticated,
+  } = useAuth();
 
-  const [username, setUsername] = useState("");
-  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [identifier, setIdentifier] =
+    useState("");
 
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [password, setPassword] =
+    useState("");
 
-  function resetLoginState() {
-    setSignedIn(false);
-    setUsername("");
-    setUserRole(null);
-    setMessage("");
-    setError("");
-  }
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  // ----------------------------------------------------
+  // REDIRECT ALREADY AUTHENTICATED USERS
+  // ----------------------------------------------------
+
+  useEffect(() => {
+    if (
+      !authLoading &&
+      isAuthenticated
+    ) {
+      router.replace("/");
+    }
+  }, [
+    authLoading,
+    isAuthenticated,
+    router,
+  ]);
+
+  // ----------------------------------------------------
+  // DEMO ACCOUNT SELECTION
+  // ----------------------------------------------------
 
   function selectDemoAccount(
     account: (typeof demoAccounts)[number]
   ) {
+    if (
+      submitting ||
+      authLoading ||
+      isAuthenticated
+    ) {
+      return;
+    }
+
     setIdentifier(account.username);
     setPassword(account.password);
-
-    resetLoginState();
+    setError("");
   }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  // ----------------------------------------------------
+  // LOGIN
+  // ----------------------------------------------------
+
+  async function handleLogin(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
-    setLoading(true);
-    resetLoginState();
+    if (
+      submitting ||
+      authLoading ||
+      isAuthenticated
+    ) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
 
     try {
-      const enteredIdentifier = identifier.trim().toLowerCase();
+      const enteredIdentifier =
+        identifier.trim().toLowerCase();
 
-      // Username resolution is restricted to predefined
-      // academic demonstration accounts.
-      const demoAccount = demoAccounts.find(
-        (account) => account.username === enteredIdentifier
-      );
+      const demoAccount =
+        demoAccounts.find(
+          (account) =>
+            account.username ===
+            enteredIdentifier
+        );
 
-      const email = demoAccount?.email ?? enteredIdentifier;
+      // Demo usernames are converted to email.
+      // Other accounts can log in using email.
+      const email =
+        demoAccount?.email ??
+        enteredIdentifier;
 
-      // 1. Authenticate the user.
-      const credential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      // Firebase Authentication.
+      const credential =
+        await signInWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
 
-      const authenticatedUid = credential.user.uid;
+      const authenticatedUid =
+        credential.user.uid;
 
-      // 2. Read the matching Firestore profile.
+      // Retrieve the matching Firestore profile.
       const profileReference = doc(
         db,
         "users",
         authenticatedUid
       );
 
-      const profileSnapshot = await getDoc(profileReference);
+      const profileSnapshot =
+        await getDoc(
+          profileReference
+        );
 
       if (!profileSnapshot.exists()) {
-        throw new Error("User profile does not exist.");
+        throw new Error(
+          "User profile not found."
+        );
       }
 
-      const profileData: unknown = profileSnapshot.data();
+      const profileData: unknown =
+        profileSnapshot.data();
 
-      // 3. Validate the profile and its UID.
-      if (!isValidProfile(profileData, authenticatedUid)) {
-        throw new Error("Invalid or inactive user profile.");
+      if (
+        !isValidProfile(
+          profileData,
+          authenticatedUid
+        )
+      ) {
+        throw new Error(
+          "Invalid or inactive user profile."
+        );
       }
 
-      // 4. Update the interface.
-      setUsername(profileData.username);
-      setUserRole(profileData.role);
-      setSignedIn(true);
-
-      setMessage(
-        `Successfully signed in as ${profileData.username}.`
-      );
+      // Authentication succeeded.
+      // AuthProvider will retain and monitor
+      // the authenticated Firebase session.
+      router.replace("/");
     } catch (loginError) {
+      console.error(
+        "Login failed:",
+        loginError
+      );
+
       // Clear any partially authenticated session.
-      await signOut(auth).catch(() => undefined);
-
-      console.error("Authentication error:", loginError);
-
-      resetLoginState();
+      try {
+        await signOut(auth);
+      } catch (signOutError) {
+        console.error(
+          "Failed to clear session:",
+          signOutError
+        );
+      }
 
       setError(
         "Unable to sign in. Please check your credentials and account status."
       );
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
-  async function handleLogout() {
-    setLoading(true);
+  // ----------------------------------------------------
+  // WAIT FOR FIREBASE SESSION CHECK
+  // ----------------------------------------------------
 
-    try {
-      await signOut(auth);
+  if (
+    authLoading ||
+    isAuthenticated
+  ) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-emerald-50 px-4">
+        <div
+          role="status"
+          className="rounded-2xl bg-white px-10 py-8 text-center shadow-lg"
+        >
+          <div
+            className="mb-4 text-4xl"
+            aria-hidden="true"
+          >
+            🌿
+          </div>
 
-      setIdentifier("");
-      setPassword("");
+          <h1 className="text-xl font-bold text-emerald-800">
+            GreenShare
+          </h1>
 
-      resetLoginState();
-
-      setMessage("You have been signed out successfully.");
-    } catch (logoutError) {
-      console.error("Logout error:", logoutError);
-
-      setError("Unable to sign out. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+          <p className="mt-3 text-sm text-slate-500">
+            {isAuthenticated
+              ? "Redirecting to homepage..."
+              : "Checking your session..."}
+          </p>
+        </div>
+      </main>
+    );
   }
+
+  // ----------------------------------------------------
+  // LOGIN FORM
+  // ----------------------------------------------------
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-emerald-50 px-4 py-12 text-slate-900">
       <section className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
-        {/* Application branding */}
-        <header className="mb-8 text-center">
-          <div className="mb-3 text-4xl" aria-hidden="true">
-            🌿
-          </div>
+        {/* BRANDING */}
 
-          <h1 className="text-3xl font-bold text-emerald-800">
-            GreenShare
-          </h1>
+        <header className="mb-8 text-center">
+          <Link
+            href="/"
+            className="inline-flex flex-col items-center"
+          >
+            <span
+              className="mb-3 text-4xl"
+              aria-hidden="true"
+            >
+              🌿
+            </span>
+
+            <h1 className="text-3xl font-bold text-emerald-800">
+              GreenShare
+            </h1>
+          </Link>
 
           <p className="mt-2 text-sm text-slate-500">
             Community Tool Library
           </p>
+
+          <p className="mt-4 text-sm text-slate-600">
+            Sign in to manage your account and
+            equipment reservations.
+          </p>
         </header>
 
-        {!signedIn ? (
-          <>
-            {/* Login form */}
-            <form
-              onSubmit={handleLogin}
-              className="space-y-5"
+        {/* FORM */}
+
+        <form
+          onSubmit={handleLogin}
+          className="space-y-5"
+        >
+          <div>
+            <label
+              htmlFor="identifier"
+              className="mb-2 block text-sm font-medium"
             >
-              <div>
-                <label
-                  htmlFor="identifier"
-                  className="mb-2 block text-sm font-medium"
-                >
-                  Username or email
-                </label>
+              Username or email
+            </label>
 
-                <input
-                  id="identifier"
-                  type="text"
-                  value={identifier}
-                  onChange={(event) =>
-                    setIdentifier(event.target.value)
-                  }
-                  autoComplete="username"
-                  placeholder="Enter username or email"
-                  required
-                  disabled={loading}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-emerald-600 disabled:opacity-60"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="password"
-                  className="mb-2 block text-sm font-medium"
-                >
-                  Password
-                </label>
-
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(event) =>
-                    setPassword(event.target.value)
-                  }
-                  autoComplete="current-password"
-                  placeholder="Enter password"
-                  required
-                  disabled={loading}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-emerald-600 disabled:opacity-60"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-lg bg-emerald-700 px-4 py-3 font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? "Signing in..." : "Sign in"}
-              </button>
-            </form>
-
-            {/* Demo accounts */}
-            <div className="mt-8 border-t border-slate-200 pt-6">
-              <h2 className="text-center text-sm font-semibold">
-                Demo accounts
-              </h2>
-
-              <p className="mt-1 text-center text-xs text-slate-500">
-                Select an account to fill in the credentials.
-              </p>
-
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                {demoAccounts.map((account) => (
-                  <button
-                    key={account.username}
-                    type="button"
-                    disabled={loading}
-                    onClick={() => selectDemoAccount(account)}
-                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-3 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
-                  >
-                    {account.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
-        ) : (
-          /* Authenticated user information */
-          <div className="space-y-5">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-              <h2 className="text-xl font-semibold text-emerald-800">
-                Welcome, {username}!
-              </h2>
-
-              <p className="mt-2 text-sm text-emerald-700">
-                You have successfully authenticated.
-              </p>
-
-              <div className="mt-4 rounded-lg bg-white p-3">
-                <p className="text-xs text-slate-500">
-                  Account role
-                </p>
-
-                <p className="mt-1 font-semibold text-emerald-800">
-                  {userRole === "admin"
-                    ? "Administrator"
-                    : "Worker"}
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loading}
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
-            >
-              {loading ? "Signing out..." : "Sign out"}
-            </button>
+            <input
+              id="identifier"
+              type="text"
+              value={identifier}
+              onChange={(event) =>
+                setIdentifier(
+                  event.target.value
+                )
+              }
+              autoComplete="username"
+              placeholder="Enter username or email"
+              required
+              disabled={submitting}
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-emerald-600 disabled:opacity-60"
+            />
           </div>
-        )}
 
-        {/* Feedback messages */}
-        {message && (
-          <div
-            role="status"
-            className="mt-5 rounded-lg bg-emerald-100 p-3 text-sm text-emerald-800"
+          <div>
+            <label
+              htmlFor="password"
+              className="mb-2 block text-sm font-medium"
+            >
+              Password
+            </label>
+
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(event) =>
+                setPassword(
+                  event.target.value
+                )
+              }
+              autoComplete="current-password"
+              placeholder="Enter password"
+              required
+              disabled={submitting}
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-emerald-600 disabled:opacity-60"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded-lg bg-emerald-700 px-4 py-3 font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {message}
-          </div>
-        )}
+            {submitting
+              ? "Signing in..."
+              : "Sign in"}
+          </button>
+        </form>
+
+        {/* ERROR */}
 
         {error && (
           <div
@@ -339,6 +419,51 @@ export default function LoginPage() {
             {error}
           </div>
         )}
+
+        {/* DEMO ACCOUNTS */}
+
+        <section className="mt-8 border-t border-slate-200 pt-6">
+          <h2 className="text-center text-sm font-semibold">
+            Demo accounts
+          </h2>
+
+          <p className="mt-1 text-center text-xs text-slate-500">
+            Choose an account to fill in its credentials.
+          </p>
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {demoAccounts.map(
+              (account) => (
+                <button
+                  key={account.username}
+                  type="button"
+                  disabled={submitting}
+                  onClick={() =>
+                    selectDemoAccount(
+                      account
+                    )
+                  }
+                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-3 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
+                >
+                  {account.label}
+                </button>
+              )
+            )}
+          </div>
+        </section>
+
+        {/* BACK LINK */}
+
+        <div className="mt-7 text-center">
+          <Link
+            href="/"
+            className="text-sm font-medium text-emerald-700 hover:underline"
+          >
+            ← Back to homepage
+          </Link>
+        </div>
+
+        {/* FOOTER */}
 
         <footer className="mt-8 text-center">
           <p className="text-xs text-slate-400">
