@@ -57,3 +57,7 @@ Status: Completed — initial functionality verifiedImplementation: The authenti
 - Logout functionality: PASS
 - TypeScript validation (npx tsc --noEmit): PASS
 Remaining limitations: Protected server-side sessions, route authorisation and administrative operation permissions have not yet been implemented. Dependency security warnings recorded in DEV-002 also remain unresolved.Next step: Create protected application navigation and separate Worker/Admin dashboards.
+
+DEV-005 — Homepage Implementation and Tailwind CSS Warnings
+Date: 16 November 2026
+Status: Functional tests passed — minor warnings pendingThe public GreenShare homepage was implemented with responsive navigation, an automatically rotating promotional carousel, illustrative daily borrowing prices, equipment search and category filters.Functional testing confirmed that navigation, carousel controls, search filtering and login links worked as expected.Observation: VS Code reported three Tailwind CSS warnings recommending bg-linear-to-br and bg-linear-to-r instead of the older gradient utility names.Impact: No functional issue was observed. The warnings concern preferred Tailwind CSS 4 class naming.Planned resolution: Update the affected class names during the next full homepage revision and verify that the warnings disappear.
