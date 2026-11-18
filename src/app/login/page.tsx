@@ -7,40 +7,26 @@ import {
 } from "react";
 
 import Link from "next/link";
-
-import {
-  useRouter,
-} from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import {
   signInWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
 
-import {
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 
-import {
-  auth,
-  db,
-} from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth-context";
 
-import {
-  useAuth,
-} from "@/lib/auth-context";
-
-import type {
-  UserRole,
-} from "@/types";
+import type { UserRole } from "@/types";
 
 // ======================================================
 // GREENSHARE — LOGIN PAGE
 // ======================================================
 
-// Academic demonstration accounts only.
-// These credentials must not be reused in production.
+// Demonstration accounts for academic assessment.
+// These passwords must not be used in production.
 
 const demoAccounts = [
   {
@@ -85,10 +71,7 @@ function isValidProfile(
     return false;
   }
 
-  const profile = value as Record<
-    string,
-    unknown
-  >;
+  const profile = value as Record<string, unknown>;
 
   return (
     profile.uid === authenticatedUid &&
@@ -114,34 +97,21 @@ export default function LoginPage() {
     isAuthenticated,
   } = useAuth();
 
-  const [identifier, setIdentifier] =
-    useState("");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
 
-  const [password, setPassword] =
-    useState("");
-
-  const [submitting, setSubmitting] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   // ----------------------------------------------------
-  // REDIRECT ALREADY AUTHENTICATED USERS
+  // REDIRECT AUTHENTICATED USERS
   // ----------------------------------------------------
 
   useEffect(() => {
-    if (
-      !authLoading &&
-      isAuthenticated
-    ) {
+    if (!authLoading && isAuthenticated) {
       router.replace("/");
     }
-  }, [
-    authLoading,
-    isAuthenticated,
-    router,
-  ]);
+  }, [authLoading, isAuthenticated, router]);
 
   // ----------------------------------------------------
   // DEMO ACCOUNT SELECTION
@@ -187,20 +157,16 @@ export default function LoginPage() {
       const enteredIdentifier =
         identifier.trim().toLowerCase();
 
-      const demoAccount =
-        demoAccounts.find(
-          (account) =>
-            account.username ===
-            enteredIdentifier
-        );
+      const demoAccount = demoAccounts.find(
+        (account) =>
+          account.username === enteredIdentifier
+      );
 
-      // Demo usernames are converted to email.
-      // Other accounts can log in using email.
+      // Demo usernames are mapped to email.
+      // Registered users currently sign in by email.
       const email =
-        demoAccount?.email ??
-        enteredIdentifier;
+        demoAccount?.email ?? enteredIdentifier;
 
-      // Firebase Authentication.
       const credential =
         await signInWithEmailAndPassword(
           auth,
@@ -208,52 +174,32 @@ export default function LoginPage() {
           password
         );
 
-      const authenticatedUid =
-        credential.user.uid;
+      const uid = credential.user.uid;
 
-      // Retrieve the matching Firestore profile.
-      const profileReference = doc(
-        db,
-        "users",
-        authenticatedUid
+      const profileSnapshot = await getDoc(
+        doc(db, "users", uid)
       );
-
-      const profileSnapshot =
-        await getDoc(
-          profileReference
-        );
 
       if (!profileSnapshot.exists()) {
         throw new Error(
-          "User profile not found."
+          "User profile was not found."
         );
       }
 
       const profileData: unknown =
         profileSnapshot.data();
 
-      if (
-        !isValidProfile(
-          profileData,
-          authenticatedUid
-        )
-      ) {
+      if (!isValidProfile(profileData, uid)) {
         throw new Error(
-          "Invalid or inactive user profile."
+          "User profile is invalid or inactive."
         );
       }
 
-      // Authentication succeeded.
-      // AuthProvider will retain and monitor
-      // the authenticated Firebase session.
       router.replace("/");
+      router.refresh();
     } catch (loginError) {
-      console.error(
-        "Login failed:",
-        loginError
-      );
+      console.error("Login failed:", loginError);
 
-      // Clear any partially authenticated session.
       try {
         await signOut(auth);
       } catch (signOutError) {
@@ -272,13 +218,10 @@ export default function LoginPage() {
   }
 
   // ----------------------------------------------------
-  // WAIT FOR FIREBASE SESSION CHECK
+  // AUTHENTICATION LOADING
   // ----------------------------------------------------
 
-  if (
-    authLoading ||
-    isAuthenticated
-  ) {
+  if (authLoading || isAuthenticated) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-emerald-50 px-4">
         <div
@@ -313,6 +256,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-emerald-50 px-4 py-12 text-slate-900">
       <section className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+
         {/* BRANDING */}
 
         <header className="mb-8 text-center">
@@ -342,7 +286,7 @@ export default function LoginPage() {
           </p>
         </header>
 
-        {/* FORM */}
+        {/* LOGIN FORM */}
 
         <form
           onSubmit={handleLogin}
@@ -353,22 +297,20 @@ export default function LoginPage() {
               htmlFor="identifier"
               className="mb-2 block text-sm font-medium"
             >
-              Username or email
+              Username or Email
             </label>
 
             <input
               id="identifier"
               type="text"
-              value={identifier}
-              onChange={(event) =>
-                setIdentifier(
-                  event.target.value
-                )
-              }
               autoComplete="username"
               placeholder="Enter username or email"
               required
               disabled={submitting}
+              value={identifier}
+              onChange={(event) =>
+                setIdentifier(event.target.value)
+              }
               className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-emerald-600 disabled:opacity-60"
             />
           </div>
@@ -384,16 +326,14 @@ export default function LoginPage() {
             <input
               id="password"
               type="password"
-              value={password}
-              onChange={(event) =>
-                setPassword(
-                  event.target.value
-                )
-              }
               autoComplete="current-password"
               placeholder="Enter password"
               required
               disabled={submitting}
+              value={password}
+              onChange={(event) =>
+                setPassword(event.target.value)
+              }
               className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-emerald-600 disabled:opacity-60"
             />
           </div>
@@ -405,11 +345,11 @@ export default function LoginPage() {
           >
             {submitting
               ? "Signing in..."
-              : "Sign in"}
+              : "Sign In"}
           </button>
         </form>
 
-        {/* ERROR */}
+        {/* ERROR MESSAGE */}
 
         {error && (
           <div
@@ -420,11 +360,31 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* DEMO ACCOUNTS */}
+        {/* REGISTER */}
+
+        <div className="mt-6 rounded-xl border border-emerald-100 bg-emerald-50 p-5 text-center">
+          <p className="text-sm font-medium text-slate-800">
+            New to GreenShare?
+          </p>
+
+          <p className="mt-1 text-xs text-slate-600">
+            Create a free Worker account and join our
+            community.
+          </p>
+
+          <Link
+            href="/register"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-lg border border-emerald-600 bg-white px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+          >
+            Create Account
+          </Link>
+        </div>
+
+        {/* DEMONSTRATION ACCOUNTS */}
 
         <section className="mt-8 border-t border-slate-200 pt-6">
           <h2 className="text-center text-sm font-semibold">
-            Demo accounts
+            Demo Accounts
           </h2>
 
           <p className="mt-1 text-center text-xs text-slate-500">
@@ -432,23 +392,19 @@ export default function LoginPage() {
           </p>
 
           <div className="mt-4 grid grid-cols-3 gap-2">
-            {demoAccounts.map(
-              (account) => (
-                <button
-                  key={account.username}
-                  type="button"
-                  disabled={submitting}
-                  onClick={() =>
-                    selectDemoAccount(
-                      account
-                    )
-                  }
-                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-3 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
-                >
-                  {account.label}
-                </button>
-              )
-            )}
+            {demoAccounts.map((account) => (
+              <button
+                key={account.username}
+                type="button"
+                disabled={submitting}
+                onClick={() =>
+                  selectDemoAccount(account)
+                }
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-3 text-xs font-medium text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
+              >
+                {account.label}
+              </button>
+            ))}
           </div>
         </section>
 
@@ -459,7 +415,7 @@ export default function LoginPage() {
             href="/"
             className="text-sm font-medium text-emerald-700 hover:underline"
           >
-            ← Back to homepage
+            ← Back to Homepage
           </Link>
         </div>
 
@@ -470,6 +426,7 @@ export default function LoginPage() {
             Academic demonstration environment only
           </p>
         </footer>
+
       </section>
     </main>
   );
