@@ -947,12 +947,12 @@ export default function HomePage() {
                               Checking session...
                             </span>
                           ) : isAuthenticated ? (
-                            <span
-                              className="rounded-lg bg-emerald-50 px-4 py-3 text-center text-sm font-semibold text-emerald-800"
-                              title="Reservation functionality is being developed"
+                            <Link
+                              href={`/borrow?equipmentId=${encodeURIComponent(item.id)}`}
+                              className="rounded-lg bg-emerald-700 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-emerald-800"
                             >
-                              Reservations coming soon
-                            </span>
+                              Reserve Equipment
+                            </Link>
                           ) : (
                             <Link
                               href="/login"
