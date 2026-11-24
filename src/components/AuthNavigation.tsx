@@ -233,15 +233,14 @@ export default function AuthNavigation() {
               {/* COMMON OPTIONS */}
 
               <div className="py-2">
-                <div
-                  aria-disabled="true"
-                  className="flex cursor-not-allowed items-center justify-between rounded-lg px-3 py-2.5 text-sm text-slate-400"
+                <Link
+                  href="/my-account"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                  className="block rounded-lg px-3 py-2.5 text-sm font-medium text-emerald-800 transition hover:bg-emerald-50"
                 >
-                  <span>My Account</span>
-                  <span className="text-xs">
-                    Soon
-                  </span>
-                </div>
+                  My Account
+                </Link>
 
                 <Link
                   href="/my-reservations"
